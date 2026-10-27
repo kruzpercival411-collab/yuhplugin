@@ -7,29 +7,45 @@ on:
     branches: [main]
 
 jobs:
-  build-windows:
+  build:
     runs-on: windows-2022
 
     steps:
-      - name: Checkout project
+      - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Find CMake project
+        id: locate
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -Path . -Filter CMakeLists.txt -Recurse -File |
+            Where-Object { $_.FullName -notmatch '[\\/](build|\.git)[\\/]' })
+
+          if ($files.Count -eq 0) {
+            throw "No CMakeLists.txt found. Upload the SAMPLE FLIP source files."
+          }
+
+          if ($files.Count -gt 1) {
+            throw "Multiple CMakeLists.txt files found. Specify the project directory."
+          }
+
+          $dir = $files[0].DirectoryName
+          "source_dir=$dir" >> $env:GITHUB_OUTPUT
+
       - name: Configure VST3
-        run: >
-          cmake -S . -B build
-          -G "Visual Studio 17 2022"
-          -A x64
+        shell: pwsh
+        run: |
+          cmake -S "${{ steps.locate.outputs.source_dir }}" -B build -G "Visual Studio 17 2022" -A x64
 
       - name: Build VST3
-        run: >
-          cmake --build build
-          --config Release
-          --target SampleFlip_VST3
-          --parallel 4
+        run: |
+          cmake --build build --config Release --parallel 4
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4
         with:
           name: SampleFlip-Windows-VST3
-          path: build/SampleFlip_artefacts/Release/VST3/
+          path: |
+            build/**/*VST3/**/*.vst3/**
+            build/**/*.vst3/**
           if-no-files-found: error
